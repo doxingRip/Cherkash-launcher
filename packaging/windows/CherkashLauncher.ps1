@@ -15,9 +15,15 @@ Remove-Item $inputDir -Recurse -Force -ErrorAction SilentlyContinue
 Remove-Item $outDir -Recurse -Force -ErrorAction SilentlyContinue
 New-Item $inputDir -ItemType Directory -Force | Out-Null
 New-Item $outDir -ItemType Directory -Force | Out-Null
+
+# jpackage does not automatically include Maven dependencies. Copy every runtime
+# dependency next to the launcher JAR so JavaFX and Gson are available at runtime.
+mvn -DskipTests dependency:copy-dependencies -DincludeScope=runtime -DoutputDirectory=$inputDir
 Copy-Item $jar.FullName "$inputDir\CherkashLauncher.jar"
 
-# app-image is useful for diagnostics, but the user-facing artifact is a real Windows installer.
+# Use classpath packaging rather than module-path packaging. This makes the
+# generated Windows application self-contained and lets JavaFX load its native
+# Windows libraries from the copied JavaFX artifacts.
 jpackage `
   --type exe `
   --name CherkashLauncher `
@@ -34,8 +40,6 @@ jpackage `
   --description "Cherkash Minecraft Launcher" `
   --win-console
 
-if (-not (Get-ChildItem "$outDir\*.exe" -ErrorAction SilentlyContinue)) {
-    throw "jpackage completed but no EXE was produced"
-}
-
-Write-Host "Windows installer created in $outDir"
+$exe = Get-ChildItem "$outDir\*.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+if (-not $exe) { throw "jpackage completed but no EXE was produced" }
+Write-Host "Windows installer created: $($exe.FullName)"
