@@ -40,8 +40,8 @@ final class LauncherService {
                 downloadVerified(artifact, p);
                 if (seen.add(p.toString())) classpath.add(p);
             }
-            String nativeKey = nativeClassifierKey();
             JsonObject classifiers = downloads.getAsJsonObject("classifiers");
+            String nativeKey = nativeClassifierKey();
             if (classifiers != null && classifiers.has(nativeKey)) {
                 JsonObject nativeDownload = classifiers.getAsJsonObject(nativeKey);
                 Path p = libraries.resolve(nativeDownload.get("path").getAsString());
@@ -52,7 +52,7 @@ final class LauncherService {
         classpath.add(client);
 
         AssetManager.prepare(meta, gameDir);
-        String java = RuntimeManager.java(version.runtime.major);
+        String java = RuntimeManager.java(version.runtime().major);
         String cp = String.join(File.pathSeparator, classpath.stream().map(Path::toString).toList());
         UUID uuid = OfflineUuid.forName(profile.name());
         List<String> cmd = new ArrayList<>(List.of(java,
@@ -84,7 +84,7 @@ final class LauncherService {
         }
         return enabled;
     }
-    private static String osName() { return System.getProperty("os.name").toLowerCase(Locale.ROOT).contains("win") ? "windows" : System.getProperty("os.name").toLowerCase(Locale.ROOT).contains("mac") ? "osx" : "linux"; }
+    private static String osName() { String n=System.getProperty("os.name").toLowerCase(Locale.ROOT); return n.contains("win")?"windows":n.contains("mac")?"osx":"linux"; }
     private static String nativeClassifierKey() { return osName().equals("windows") ? "natives-windows" : osName().equals("osx") ? "natives-osx" : "natives-linux"; }
 
     private static void extractNatives(Path jar, Path out) throws IOException {
@@ -92,12 +92,9 @@ final class LauncherService {
             var entries = zip.entries();
             while (entries.hasMoreElements()) {
                 var e = entries.nextElement();
-                if (e.isDirectory() || !e.getName().startsWith("META-INF/") && e.getName().contains("/")) {
-                    String name = Path.of(e.getName()).getFileName().toString();
-                    if (name.endsWith(".dll") || name.endsWith(".so") || name.endsWith(".dylib")) {
-                        Files.copy(zip.getInputStream(e), out.resolve(name), StandardCopyOption.REPLACE_EXISTING);
-                    }
-                }
+                if (e.isDirectory()) continue;
+                String name = Path.of(e.getName()).getFileName().toString();
+                if (name.endsWith(".dll") || name.endsWith(".so") || name.endsWith(".dylib")) Files.copy(zip.getInputStream(e), out.resolve(name), StandardCopyOption.REPLACE_EXISTING);
             }
         }
     }
@@ -112,7 +109,7 @@ final class LauncherService {
     }
     private static JsonObject getJson(URI uri) throws Exception {
         HttpResponse<String> r = HTTP.send(HttpRequest.newBuilder(uri).GET().build(), HttpResponse.BodyHandlers.ofString());
-        if (r.statusCode() / 100 != 2) throw new IOException("HTTP " + r.statusCode() + " while downloading " + uri);
+        if (r.statusCode()/100 != 2) throw new IOException("HTTP " + r.statusCode() + " while downloading " + uri);
         return JsonParser.parseString(r.body()).getAsJsonObject();
     }
     private static void downloadVerified(JsonObject d, Path target) throws Exception {
@@ -120,13 +117,13 @@ final class LauncherService {
         Files.createDirectories(target.toAbsolutePath().getParent());
         Path tmp = target.resolveSibling(target.getFileName() + ".part");
         HttpResponse<Path> r = HTTP.send(HttpRequest.newBuilder(URI.create(d.get("url").getAsString())).GET().build(), HttpResponse.BodyHandlers.ofFile(tmp));
-        if (r.statusCode() / 100 != 2) throw new IOException("HTTP " + r.statusCode() + " while downloading " + d.get("url"));
+        if (r.statusCode()/100 != 2) throw new IOException("HTTP " + r.statusCode() + " while downloading " + d.get("url"));
         if (d.has("sha1") && !sha1(tmp).equalsIgnoreCase(d.get("sha1").getAsString())) { Files.deleteIfExists(tmp); throw new IOException("SHA-1 verification failed: " + target); }
         Files.move(tmp, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
     }
     private static String sha1(Path p) throws Exception {
-        MessageDigest md = MessageDigest.getInstance("SHA-1");
-        try (InputStream in = Files.newInputStream(p)) { byte[] b = new byte[1024 * 1024]; int n; while ((n = in.read(b)) > 0) md.update(b, 0, n); }
-        StringBuilder s = new StringBuilder(); for (byte b : md.digest()) s.append(String.format("%02x", b)); return s.toString();
+        MessageDigest md=MessageDigest.getInstance("SHA-1");
+        try(InputStream in=Files.newInputStream(p)){byte[] b=new byte[1024*1024];int n;while((n=in.read(b))>0)md.update(b,0,n);}
+        StringBuilder s=new StringBuilder();for(byte b:md.digest())s.append(String.format("%02x",b));return s.toString();
     }
 }
